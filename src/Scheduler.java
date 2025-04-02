@@ -4,7 +4,10 @@ import java.util.*;
 
 public class Scheduler {
 
-    public PCB currentlyRunning = null;
+    public PCB currentlyRunning;
+
+    private final HashMap<Integer, PCB> pcbByPID = new HashMap<>();
+    private final HashMap<String, PCB> pcbByName = new HashMap<>();
 
     // process queues
     private final LinkedList<PCB> realtimeQueue    = new LinkedList<>();
@@ -20,6 +23,7 @@ public class Scheduler {
             }
         }
     );
+    private final ArrayList<PCB> awaitingMessage = new ArrayList<>();
 
     private final Timer  timer = new Timer();
     private final Clock  clock = Clock.systemDefaultZone();
@@ -27,9 +31,14 @@ public class Scheduler {
     private final VirtualFileSystem vfs;
 
     /**
-     * @param vfs Required in order to close devices on process destruction.
+     * @param init The process scheduler is initialized with. Is usually the
+     *             process to launch all other processes and should never exit.
+     * @param vfs Reference to the systems VFS in order to properly close any
+     *            open devices upon process destruction.
      */
-    public Scheduler(VirtualFileSystem vfs) {
+    public Scheduler(UserlandProcess init, VirtualFileSystem vfs) {
+//        this.currentlyRunning = new PCB(new IdleProcess(), OS.PriorityType.background);
+        currentlyRunning = new PCB(init, OS.PriorityType.interactive);
         this.vfs = vfs;
         TimerTask task = new TimerTask() {
             @Override
@@ -45,6 +54,7 @@ public class Scheduler {
             }
         };
         timer.schedule(task, 0, 250);
+        currentlyRunning.start();
     }
 
     /**
@@ -56,19 +66,22 @@ public class Scheduler {
      * @return
      */
     public int CreateProcess(UserlandProcess up, OS.PriorityType p) {
+        PCB pcb = new PCB(up, p);
         switch (p) {
             case OS.PriorityType.interactive:
-                interactiveQueue.add(new PCB(up, p));
+                interactiveQueue.add(pcb);
                 break;
             case OS.PriorityType.background:
-                backgroundQueue.add(new PCB(up, p));
+                backgroundQueue.add(pcb);
                 break;
             case OS.PriorityType.realtime:
-                realtimeQueue.add(new PCB(up, p));
+                realtimeQueue.add(pcb);
                 break;
         }
-        if (currentlyRunning == null)
-            SwitchProcess();
+        pcbByPID.put(pcb.pid, pcb);
+        pcbByName.put(pcb.getName(), pcb);
+//        if (currentlyRunning == null)
+//            SwitchProcess();
         return 0;
     }
 
@@ -92,70 +105,134 @@ public class Scheduler {
     public void SwitchProcess(boolean deschedule) {
         PCB nextProcess = GetNextProcess();
         if (nextProcess == null)
+            // no processes to run, just continue running whatever is currently
+            // running
             return;
-        if (currentlyRunning != null && currentlyRunning.isDone())
-            DestroyProcess();
-        else if (deschedule)
-            DestroyProcess();
-        else
+        if (currentlyRunning != null) {
+            if (currentlyRunning.isDone())
+                // process execution ended unexpectedly
+                DestroyRunningProcess();
+            else if (deschedule)
+                // program called OS.Exit()
+                DestroyRunningProcess();
+        } else
             RequeueRunningProcess();
         currentlyRunning = nextProcess;
     }
 
+    /**
+     * Fetches the next process ready for execution. Removes it from its queue,
+     * but does not update {@code currentlyRunning}. Returns {@code null} if
+     * there are no processes to switch to.
+     * @return Next process to run.
+     */
     private PCB GetNextProcess() {
-        PCB nextProcess = null;
 
         if (!sleepingQueue.isEmpty())
             if (clock.millis() >= sleepingQueue.peek().getWakeTime())
                 return sleepingQueue.remove();
 
-        int realtimeWeight;
-        int interactiveWeight;
-        int backgroundWeight;
+        if (!awaitingMessage.isEmpty()) {
+            for (int i = 0; i < awaitingMessage.size(); i++) {
+                PCB pcb = awaitingMessage.get(i);
+                KernelMessage msg = pcb.readMessage();
+                if (msg == null)
+                    continue;
+                OS.retVal = msg;
+                awaitingMessage.remove(i);
+                return pcb;
+            }
+        }
 
+        int randint = rng.nextInt(100);
         if (!realtimeQueue.isEmpty()) {
-            realtimeWeight    = 60;
-            interactiveWeight = 30;
-            backgroundWeight  = 10;
-        } else if (!interactiveQueue.isEmpty()) {
-            realtimeWeight    = 0;
-            interactiveWeight = 75;
-            backgroundWeight  = 25;
-        } else {
-            realtimeWeight    = 0;
-            interactiveWeight = 75;
-            backgroundWeight  = 25;
+            if (!backgroundQueue.isEmpty() && randint < 10)
+                return backgroundQueue.remove();
+            if (!interactiveQueue.isEmpty() && randint < 30)
+                return interactiveQueue.remove();
+            return realtimeQueue.remove();
         }
-
-        int randint = rng.nextInt(realtimeWeight + interactiveWeight + backgroundWeight);
-        OS.PriorityType nextQueue;
-        if (randint < realtimeWeight)
-            nextQueue = OS.PriorityType.realtime;
-        else if (randint < realtimeWeight + interactiveWeight)
-            nextQueue = OS.PriorityType.interactive;
-        else
-            nextQueue = OS.PriorityType.background;
-
-        // Fallthrough if there's no processes in whatever queue got selected
-        switch (nextQueue) {
-            case realtime:
-                if (!realtimeQueue.isEmpty()) {
-                    nextProcess = realtimeQueue.removeFirst();
-                    break;
-                }
-            case interactive:
-                if (!interactiveQueue.isEmpty()) {
-                    nextProcess = interactiveQueue.removeFirst();
-                    break;
-                }
-            case background:
-                if (!backgroundQueue.isEmpty()) {
-                    nextProcess = backgroundQueue.removeFirst();
-                    break;
-                }
+        if (!interactiveQueue.isEmpty()) {
+            if (!backgroundQueue.isEmpty() && randint < 25)
+                return backgroundQueue.remove();
+            return interactiveQueue.remove();
         }
-        return nextProcess;
+        if (!backgroundQueue.isEmpty())
+            return backgroundQueue.remove();
+        return null;
     }
+
+//    /**
+//     * Fetches the next process ready for execution. Removes it from its queue,
+//     * but does not update {@code currentlyRunning}.
+//     * @return Next process to run. {@code null} when no such process is found.
+//     */
+//    private PCB GetNextProcess() {
+//        PCB nextProcess = null;
+//
+//        if (!sleepingQueue.isEmpty())
+//            if (clock.millis() >= sleepingQueue.peek().getWakeTime())
+//                return sleepingQueue.remove();
+//
+//        if (!awaitingMessage.isEmpty()) {
+//            for (int i = 0; i < awaitingMessage.size(); i++) {
+//                PCB pcb = awaitingMessage.get(i);
+//                KernelMessage msg = pcb.readMessage();
+//                if (msg == null)
+//                    continue;
+//                OS.retVal = msg;
+//                awaitingMessage.remove(i);
+//                return pcb;
+//            }
+//        }
+//
+//        int realtimeWeight;
+//        int interactiveWeight;
+//        int backgroundWeight;
+//
+//        if (!realtimeQueue.isEmpty()) {
+//            realtimeWeight    = 60;
+//            interactiveWeight = 30;
+//            backgroundWeight  = 10;
+//        } else if (!interactiveQueue.isEmpty()) {
+//            realtimeWeight    = 0;
+//            interactiveWeight = 75;
+//            backgroundWeight  = 25;
+//        } else {
+//            realtimeWeight    = 0;
+//            interactiveWeight = 75;
+//            backgroundWeight  = 25;
+//        }
+//
+//        int randint = rng.nextInt(realtimeWeight + interactiveWeight + backgroundWeight);
+//        OS.PriorityType nextQueue;
+//        if (randint < realtimeWeight)
+//            nextQueue = OS.PriorityType.realtime;
+//        else if (randint < realtimeWeight + interactiveWeight)
+//            nextQueue = OS.PriorityType.interactive;
+//        else
+//            nextQueue = OS.PriorityType.background;
+//
+//        // Fallthrough if there's no processes in whatever queue got selected
+//        switch (nextQueue) {
+//            case realtime:
+//                if (!realtimeQueue.isEmpty()) {
+//                    nextProcess = realtimeQueue.removeFirst();
+//                    break;
+//                }
+//            case interactive:
+//                if (!interactiveQueue.isEmpty()) {
+//                    nextProcess = interactiveQueue.removeFirst();
+//                    break;
+//                }
+//            case background:
+//                if (!backgroundQueue.isEmpty()) {
+//                    nextProcess = backgroundQueue.removeFirst();
+//                    break;
+//                }
+//        }
+//        return nextProcess;
+//    }
 
 //    /**
 //     * Updates {@code Scheduler.currentlyRunning} with a new process to run from
@@ -167,9 +244,9 @@ public class Scheduler {
 //     */
 //    public void SwitchProcess(boolean deschedule) {
 //        if (currentlyRunning != null && currentlyRunning.isDone())
-//            DestroyProcess();
+//            DestroyRunningProcess();
 //        if (deschedule)
-//            DestroyProcess();
+//            DestroyRunningProcess();
 //
 //        if (!sleepingQueue.isEmpty())
 //            if (clock.millis() >= sleepingQueue.peek().getWakeTime()) {
@@ -263,6 +340,10 @@ public class Scheduler {
         currentlyRunning = null;
     }
 
+    /**
+     * Puts the currently running process to sleep.
+     * @param ms minimum duration to sleep for, in milliseconds.
+     */
     public void Sleep(int ms) {
         currentlyRunning.resetTimeoutCounter();
         currentlyRunning.setWakeTime(clock.millis() + ms);
@@ -271,24 +352,68 @@ public class Scheduler {
         SwitchProcess();
     }
 
-    public void DestroyProcess() {
-        if (currentlyRunning == null)
-            return;
+    /**
+     * Checks if the currently running process has a {@code KernelMessage} in
+     * its message queue and returns it. Otherwise, the process is put into a
+     * waiting state until it receives one and a new process will run.
+     * @return The message, if there is one. Otherwise, {@code null} and the
+     * process it put to sleep.
+     */
+    public KernelMessage AwaitMessage() {
+        KernelMessage msg = currentlyRunning.readMessage();
+        if (msg != null)
+            return msg;
+        awaitingMessage.add(currentlyRunning);
+        currentlyRunning = null;
+        SwitchProcess();
+        return null;
+    }
 
+    /**
+     * Destroys whatever process is currently running.
+     */
+    public void DestroyRunningProcess() {
+        pcbByName.remove(currentlyRunning.getClass().getSimpleName());
+        pcbByPID.remove(currentlyRunning.pid);
         for (int id : currentlyRunning.descriptors)
             if (id != -1)
                 vfs.Close(id);
+    }
+
+    /**
+     * Delivers a {@code KernelMessage} to its associated process. Fails
+     * saliently if the process cannot be found.
+     * @param msg message to deliver
+     */
+    public void DeliverMessage(KernelMessage msg) {
+        PCB targetPCB = pcbByPID.get(msg.getTargetPID());
+        if (targetPCB == null)
+            return;
+        targetPCB.deliverMessage(msg);
     }
 
     public PCB GetCurrentlyRunning() {
         return currentlyRunning;
     }
 
-    public void printState() {
-        System.out.println(String.format("Running: %s", null));
-        System.out.println(String.format("RT %s", realtimeQueue));
-        System.out.println(String.format("IT %s", interactiveQueue));
-        System.out.println(String.format("BG %s", backgroundQueue));
-        System.out.println(String.format("Sleep %s", sleepingQueue));
+    public int GetPIDByName(String name) {
+        if (!pcbByName.containsKey(name))
+            return -1;
+        return pcbByName.get(name).pid;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("""
+                Running: %s
+                RT %s
+                IT %s
+                BG %s
+                Sleep %s""", currentlyRunning, realtimeQueue, interactiveQueue, backgroundQueue, sleepingQueue);
+//        System.out.println(String.format("Running: %s", null));
+//        System.out.println(String.format("RT %s", realtimeQueue));
+//        System.out.println(String.format("IT %s", interactiveQueue));
+//        System.out.println(String.format("BG %s", backgroundQueue));
+//        System.out.println(String.format("Sleep %s", sleepingQueue));
     }
 }

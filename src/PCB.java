@@ -1,34 +1,37 @@
+import java.util.LinkedList;
 
-/**
- * Process control block
- */
+/** Process control block */
 public class PCB {
 
-    public final int pid;
     private static int nextPid = 1;
-    private OS.PriorityType priority;
+
+    public final int pid;
     private final Process process;
+    private final String name;
+    private OS.PriorityType priority;
     private long wakeTime = 0;
     private int timeoutCounter = 0;
     public final int[] descriptors = {-1,-1,-1,-1};
+    private final LinkedList<KernelMessage> messageQueue = new LinkedList<>();
 
     PCB(UserlandProcess up, OS.PriorityType priority) {
         process = up;
+        name = up.getClass().getSimpleName();
         this.priority = priority;
         pid = nextPid;
         nextPid++;
     }
 
     public String getName() {
-        return null;
+        return name;
     }
 
     public void requestStop() {
         process.requestStop();
     }
 
-    public void stop() { /* calls userlandprocess’ stop. Loops with Thread.sleep() until
-ulp.isStopped() is true.  */
+    public void stop() {
+        // calls userlandprocess’ stop. Loops with Thread.sleep() until ulp.isStopped() is true.
         process.stop();
         while (!process.isStopped()) {
             try { Thread.sleep(30); }
@@ -74,5 +77,26 @@ ulp.isStopped() is true.  */
 
     public boolean ranToTimeout() {
         return process.isQuantumExpired();
+    }
+
+    /**
+     * Removes (dequeues) a {@code KernelMessage} from the process' message
+     * queue. Returns {@code null} if the queue is empty.
+     */
+    public KernelMessage readMessage() {
+        return messageQueue.poll();
+    }
+
+    /**
+     * Adds (enqueues) a {@code KernelMessage} to the process' message queue.
+     * @param msg message to enqueue
+     */
+    public void deliverMessage(KernelMessage msg) {
+        messageQueue.add(msg);
+    }
+
+    @Override
+    public String toString() {
+        return process.toString();
     }
 }

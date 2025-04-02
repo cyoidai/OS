@@ -7,28 +7,33 @@ public class OS {
     public static List<Object> parameters = new ArrayList<>();
     public static Object retVal;
 
-    public enum CallType {SwitchProcess,SendMessage, Open, Close, Read, Seek, Write, GetMapping,
-                          CreateProcess, Sleep, GetPID, AllocateMemory, FreeMemory, GetPIDByName,
-                          WaitForMessage, Exit}
+    public enum CallType {
+        SwitchProcess,SendMessage, Open, Close, Read, Seek, Write, GetMapping,
+        CreateProcess, Sleep, GetPID, AllocateMemory, FreeMemory, GetPIDByName,
+        WaitForMessage, Exit
+    }
     public static CallType currentCall;
 
     private static void startTheKernel() {
         ki.start();
     }
 
-    public static void switchProcess() {
+    public static void SwitchProcess() {
         parameters.clear();
         currentCall = CallType.SwitchProcess;
         startTheKernel();
     }
 
     public static void Startup(UserlandProcess init) {
-        ki = new Kernel();
-        CreateProcess(init, PriorityType.interactive);
-        CreateProcess(new IdleProcess(), PriorityType.background);
+        ki = new Kernel(init);
+        // operating system calls should never happen from main thread as then
+        // the kernel tries to stop a thread that isn't functioning as a
+        // process.
+//        CreateProcess(new IdleProcess(), PriorityType.background);
+//        CreateProcess(init, PriorityType.interactive);
     }
 
-    public enum PriorityType {realtime, interactive, background}
+    public enum PriorityType { realtime, interactive, background }
     public static int CreateProcess(UserlandProcess up) {
         return CreateProcess(up, PriorityType.interactive);
     }
@@ -40,11 +45,6 @@ public class OS {
         parameters.add(priority);
         currentCall = CallType.CreateProcess;
         startTheKernel();
-        while (retVal == null) {
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {}
-        }
         return (int) retVal;
     }
 

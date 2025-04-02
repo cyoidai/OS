@@ -7,13 +7,13 @@ public abstract class Process implements Runnable {
     boolean quantumExpired = false;
 
     public Process() {
-        thread = new Thread(this);
+        thread = new Thread(this, this.getClass().getSimpleName());
         semaphore = new Semaphore(0);
         thread.start();
     }
 
     /**
-     * Requests the process to stop by setting its quantum to expired.
+     * Requests the process to stop by setting its quantum to "expired".
      */
     public void requestStop() {
         quantumExpired = true;
@@ -41,16 +41,15 @@ public abstract class Process implements Runnable {
     }
 
     public void start() {
-        System.out.println(String.format("Starting process %s", this));
         semaphore.release();
-        System.out.println(String.format("Started process %s", this));
+//        System.out.println(String.format("Started process %s", this));
     }
 
     public void stop() {
-        System.out.println(String.format("Stopping process %s", this));
+//        System.out.println(String.format("Stopping process %s", this));
         try {
             semaphore.acquire();
-            System.out.println(String.format("Stopped process %s", this));
+//            System.out.println(String.format("Stopped process %s", this));
         } catch (InterruptedException e) {}
     }
 
@@ -59,17 +58,28 @@ public abstract class Process implements Runnable {
         try {
             semaphore.acquire();
         } catch (InterruptedException e) {}
-        main();
+        try {
+            main();
+        } catch (Exception e) {
+            System.out.println(String.format("Process '%s' crashed unexpectedly", this));
+            e.printStackTrace();
+            OS.Exit();
+        }
     }
 
     public void cooperate() {
         if (quantumExpired) {
             quantumExpired = false;
-            OS.switchProcess();
+            OS.SwitchProcess();
         }
     }
 
     public boolean isQuantumExpired() {
         return quantumExpired;
+    }
+
+    @Override
+    public String toString() {
+        return this.getClass().getSimpleName();
     }
 }

@@ -2,10 +2,21 @@
 public class Kernel extends Process implements Device {
 
     private final VirtualFileSystem vfs = new VirtualFileSystem();
-    private final Scheduler scheduler = new Scheduler(vfs);
+    private Scheduler scheduler = null;
+
+    public Kernel(UserlandProcess init) {
+        super();
+        scheduler = new Scheduler(init, vfs);
+    }
 
     @Override
     public void main() {
+        while (scheduler == null) {
+            // Prevents the kernel from executing anything until scheduler has
+            // been initialized with a process ready to run. Otherwise,
+            // `scheduler.currentlyRunning.start()` will fail. This is because
+            // thread execution starts in the superclass.
+        }
         while (true) { // Warning on infinite loop is OK...
             switch (OS.currentCall) { // get a job from OS, do it
                 case CreateProcess ->  // Note how we get parameters from OS and set the return value
@@ -23,18 +34,14 @@ public class Kernel extends Process implements Device {
                 case Write -> OS.retVal = Write((int)OS.parameters.get(0), (byte[])OS.parameters.get(1));
                 // Messages
                 case GetPIDByName   -> OS.retVal = GetPidByName((String)OS.parameters.get(0));
-                case SendMessage    -> SendMessage();
+                case SendMessage    -> SendMessage((KernelMessage)OS.parameters.get(0));
                 case WaitForMessage -> WaitForMessage();
                 // Memory
                 case GetMapping     -> GetMapping((int)OS.parameters.get(0));
                 case AllocateMemory -> OS.retVal = AllocateMemory((int)OS.parameters.get(0));
                 case FreeMemory     -> OS.retVal = FreeMemory((int)OS.parameters.get(0), (int)OS.parameters.get(1));
             }
-            // TODO: Now that we have done the work asked of us, start some process then go to sleep.
-            scheduler.SwitchProcess();
             scheduler.currentlyRunning.start();
-//            if (scheduler.currentlyRunning != null)
-//                scheduler.currentlyRunning.start();
             stop();
         }
     }
@@ -45,8 +52,12 @@ public class Kernel extends Process implements Device {
     @Override
     public void start() {
         super.start();
-        if (scheduler.currentlyRunning != null)
-            scheduler.currentlyRunning.stop();
+//        if (scheduler.currentlyRunning != null)
+//        System.out.println(String.format("Kernel was started, stopping %s", scheduler.currentlyRunning.toString()));
+//        if (scheduler.currentlyRunning != null)
+            // This should always be true. `currentlyRunning` should only ever
+            // be null on first startup, as there's no existing process to stop.
+        scheduler.currentlyRunning.stop();
     }
 
 //    @Override
@@ -74,6 +85,10 @@ public class Kernel extends Process implements Device {
 
     private int GetPid() {
         return scheduler.currentlyRunning.pid;
+    }
+
+    private int GetPidByName(String name) {
+        return scheduler.GetPIDByName(name);
     }
 
     public int Open(String s) {
@@ -113,16 +128,16 @@ public class Kernel extends Process implements Device {
         return vfs.Write(vfsID, data);
     }
 
-    private void SendMessage(/*KernelMessage km*/) {
+    private void SendMessage(KernelMessage msg) {
+        KernelMessage msgCopy = new KernelMessage(msg);
+        msgCopy.setSenderPID(scheduler.currentlyRunning.pid);
+        scheduler.DeliverMessage(msgCopy);
     }
 
-    private KernelMessage WaitForMessage() {
-        return null;
-    }
-
-    private int GetPidByName(String name) {
-//        return scheduler.currentlyRunning.getName()
-        return 0;
+    private void WaitForMessage() {
+        KernelMessage msg = scheduler.AwaitMessage();
+        if (msg != null)
+            OS.retVal = msg;
     }
 
     private void GetMapping(int virtualPage) {
@@ -138,5 +153,4 @@ public class Kernel extends Process implements Device {
 
     private void FreeAllMemory(PCB currentlyRunning) {
     }
-
 }
