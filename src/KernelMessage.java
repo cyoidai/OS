@@ -47,6 +47,6 @@ public class KernelMessage {
 
     @Override
     public String toString() {
-        return String.format("%s senderpid=%d,targetpid=%d,type=%d,msg=%s", super.toString(), senderPID, targetPID, type, new String(data));
+        return String.format("%s senderpid=%d,targetpid=%d,type=%d,msg=\"%s\"", super.toString(), senderPID, targetPID, type, new String(data));
     }
 }

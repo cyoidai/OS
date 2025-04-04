@@ -17,7 +17,7 @@ public class Kernel extends Process implements Device {
             // `scheduler.currentlyRunning.start()` will fail. This is because
             // thread execution starts in the superclass.
         }
-        while (true) { // Warning on infinite loop is OK...
+        while (true) {
             switch (OS.currentCall) { // get a job from OS, do it
                 case CreateProcess ->  // Note how we get parameters from OS and set the return value
                         OS.retVal = CreateProcess((UserlandProcess) OS.parameters.get(0), (OS.PriorityType) OS.parameters.get(1));
@@ -52,25 +52,13 @@ public class Kernel extends Process implements Device {
     @Override
     public void start() {
         super.start();
-//        if (scheduler.currentlyRunning != null)
-//        System.out.println(String.format("Kernel was started, stopping %s", scheduler.currentlyRunning.toString()));
-//        if (scheduler.currentlyRunning != null)
-            // This should always be true. `currentlyRunning` should only ever
-            // be null on first startup, as there's no existing process to stop.
         scheduler.currentlyRunning.stop();
     }
-
-//    @Override
-//    public void run() {
-//        super.run();
-//        main();
-//    }
 
     private void SwitchProcess() {
         scheduler.SwitchProcess();
     }
 
-    // For assignment 1, you can ignore the priority. We will use that in assignment 2
     private int CreateProcess(UserlandProcess up, OS.PriorityType priority) {
         return scheduler.CreateProcess(up, priority);
     }

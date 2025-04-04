@@ -162,153 +162,6 @@ public class Scheduler {
         return null;
     }
 
-//    /**
-//     * Fetches the next process ready for execution. Removes it from its queue,
-//     * but does not update {@code currentlyRunning}.
-//     * @return Next process to run. {@code null} when no such process is found.
-//     */
-//    private PCB GetNextProcess() {
-//        PCB nextProcess = null;
-//
-//        if (!sleepingQueue.isEmpty())
-//            if (clock.millis() >= sleepingQueue.peek().getWakeTime())
-//                return sleepingQueue.remove();
-//
-//        if (!awaitingMessage.isEmpty()) {
-//            for (int i = 0; i < awaitingMessage.size(); i++) {
-//                PCB pcb = awaitingMessage.get(i);
-//                KernelMessage msg = pcb.readMessage();
-//                if (msg == null)
-//                    continue;
-//                OS.retVal = msg;
-//                awaitingMessage.remove(i);
-//                return pcb;
-//            }
-//        }
-//
-//        int realtimeWeight;
-//        int interactiveWeight;
-//        int backgroundWeight;
-//
-//        if (!realtimeQueue.isEmpty()) {
-//            realtimeWeight    = 60;
-//            interactiveWeight = 30;
-//            backgroundWeight  = 10;
-//        } else if (!interactiveQueue.isEmpty()) {
-//            realtimeWeight    = 0;
-//            interactiveWeight = 75;
-//            backgroundWeight  = 25;
-//        } else {
-//            realtimeWeight    = 0;
-//            interactiveWeight = 75;
-//            backgroundWeight  = 25;
-//        }
-//
-//        int randint = rng.nextInt(realtimeWeight + interactiveWeight + backgroundWeight);
-//        OS.PriorityType nextQueue;
-//        if (randint < realtimeWeight)
-//            nextQueue = OS.PriorityType.realtime;
-//        else if (randint < realtimeWeight + interactiveWeight)
-//            nextQueue = OS.PriorityType.interactive;
-//        else
-//            nextQueue = OS.PriorityType.background;
-//
-//        // Fallthrough if there's no processes in whatever queue got selected
-//        switch (nextQueue) {
-//            case realtime:
-//                if (!realtimeQueue.isEmpty()) {
-//                    nextProcess = realtimeQueue.removeFirst();
-//                    break;
-//                }
-//            case interactive:
-//                if (!interactiveQueue.isEmpty()) {
-//                    nextProcess = interactiveQueue.removeFirst();
-//                    break;
-//                }
-//            case background:
-//                if (!backgroundQueue.isEmpty()) {
-//                    nextProcess = backgroundQueue.removeFirst();
-//                    break;
-//                }
-//        }
-//        return nextProcess;
-//    }
-
-//    /**
-//     * Updates {@code Scheduler.currentlyRunning} with a new process to run from
-//     * the process queues.
-//     * @param deschedule When true, the currently running process will be
-//     *                   dropped from the scheduler and will never run again.
-//     *                   When false, functions the same as
-//     *                   {@code Scheduler.SwitchProcess()}.
-//     */
-//    public void SwitchProcess(boolean deschedule) {
-//        if (currentlyRunning != null && currentlyRunning.isDone())
-//            DestroyRunningProcess();
-//        if (deschedule)
-//            DestroyRunningProcess();
-//
-//        if (!sleepingQueue.isEmpty())
-//            if (clock.millis() >= sleepingQueue.peek().getWakeTime()) {
-//                requeueRunningProcess();
-//                currentlyRunning = sleepingQueue.remove();
-//                return;
-//            }
-//
-//        int realtimeWeight;
-//        int interactiveWeight;
-//        int backgroundWeight;
-//
-//        if (!realtimeQueue.isEmpty()) {
-//            realtimeWeight    = 60;
-//            interactiveWeight = 30;
-//            backgroundWeight  = 10;
-//        } else if (!interactiveQueue.isEmpty()) {
-//            realtimeWeight    = 0;
-//            interactiveWeight = 75;
-//            backgroundWeight  = 25;
-//        } else if (!backgroundQueue.isEmpty()) {
-//            // Only background processes exist
-//            requeueRunningProcess();
-//            currentlyRunning = backgroundQueue.removeFirst();
-//            return;
-//        } else {
-//            // All queues are empty, just do nothing
-//            return;
-//        }
-//
-//        int randint = rng.nextInt(realtimeWeight + interactiveWeight + backgroundWeight);
-//        OS.PriorityType nextQueue;
-//        if (randint < realtimeWeight)
-//            nextQueue = OS.PriorityType.realtime;
-//        else if (randint < realtimeWeight + interactiveWeight)
-//            nextQueue = OS.PriorityType.interactive;
-//        else
-//            nextQueue = OS.PriorityType.background;
-//
-//        // Fallthrough if there's no processes in whatever queue got selected
-//        switch (nextQueue) {
-//            case OS.PriorityType.realtime:
-//                if (!realtimeQueue.isEmpty()) {
-//                    requeueRunningProcess();
-//                    currentlyRunning = realtimeQueue.removeFirst();
-//                    break;
-//                }
-//            case OS.PriorityType.interactive:
-//                if (!interactiveQueue.isEmpty()) {
-//                    requeueRunningProcess();
-//                    currentlyRunning = interactiveQueue.removeFirst();
-//                    break;
-//                }
-//            case OS.PriorityType.background:
-//                if (!backgroundQueue.isEmpty()) {
-//                    requeueRunningProcess();
-//                    currentlyRunning = backgroundQueue.removeFirst();
-//                    break;
-//                }
-//        }
-//    }
-
     /**
      * Requeue (add) the currently running process back into its proper queue
      * and clear {@code currentlyRunning}. Also handles process priority
@@ -357,7 +210,7 @@ public class Scheduler {
      * its message queue and returns it. Otherwise, the process is put into a
      * waiting state until it receives one and a new process will run.
      * @return The message, if there is one. Otherwise, {@code null} and the
-     * process it put to sleep.
+     * process is placed into a waiting state.
      */
     public KernelMessage AwaitMessage() {
         KernelMessage msg = currentlyRunning.readMessage();
@@ -396,6 +249,12 @@ public class Scheduler {
         return currentlyRunning;
     }
 
+    /**
+     * Returns the process ID (PID) of a process stored within this scheduler by
+     * its name.
+     * @param name The process' name to query.
+     * @return The process' PID. -1 on failure.
+     */
     public int GetPIDByName(String name) {
         if (!pcbByName.containsKey(name))
             return -1;
