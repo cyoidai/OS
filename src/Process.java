@@ -65,6 +65,7 @@ public abstract class Process implements Runnable {
             e.printStackTrace();
             OS.Exit();
         }
+        OS.Exit();
     }
 
     public void cooperate() {

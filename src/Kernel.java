@@ -1,22 +1,28 @@
+import java.util.Arrays;
 
 public class Kernel extends Process implements Device {
 
     private final VirtualFileSystem vfs = new VirtualFileSystem();
     private Scheduler scheduler = null;
+    /** Array where indices are page indices ({@code address / PAGE_SIZE}), and
+     * values indicate whether that page is in use ({@code true}) or not in use
+     * ({@code false}). */
+    private final boolean[] freePages = new boolean[Hardware.MEM_SIZE / Hardware.PAGE_SIZE];
 
     public Kernel(UserlandProcess init) {
         super();
+        Hardware.clearTLB();
         scheduler = new Scheduler(init, vfs);
     }
 
     @Override
     public void main() {
-        while (scheduler == null) {
+        while (scheduler == null) ;
+        while (scheduler.currentlyRunning == null) ;
             // Prevents the kernel from executing anything until scheduler has
             // been initialized with a process ready to run. Otherwise,
             // `scheduler.currentlyRunning.start()` will fail. This is because
             // thread execution starts in the superclass.
-        }
         while (true) {
             switch (OS.currentCall) { // get a job from OS, do it
                 case CreateProcess ->  // Note how we get parameters from OS and set the return value
@@ -57,6 +63,7 @@ public class Kernel extends Process implements Device {
 
     private void SwitchProcess() {
         scheduler.SwitchProcess();
+        Hardware.clearTLB();
     }
 
     private int CreateProcess(UserlandProcess up, OS.PriorityType priority) {
@@ -68,6 +75,7 @@ public class Kernel extends Process implements Device {
     }
 
     private void Exit() {
+        FreeAllMemory();
         scheduler.SwitchProcess(true);
     }
 
@@ -129,16 +137,47 @@ public class Kernel extends Process implements Device {
     }
 
     private void GetMapping(int virtualPage) {
+        int physicalAddress = scheduler.GetCurrentlyRunning().getMapping(virtualPage);
+        if (physicalAddress != -1)
+            Hardware.updateTLB(virtualPage, physicalAddress);
     }
 
     private int AllocateMemory(int size) {
-        return 0; // change this
+        if (size % 1024 != 0)
+            return -1;
+        int pages = size / 1024;
+        int[] physicalPageAddresses = new int[pages];
+        Arrays.fill(physicalPageAddresses, -1);
+        // search for unallocated memory blocks
+        int pageIndex = 0;
+        for (int i = 0; i < freePages.length; i++)
+            if (!freePages[i]) {
+                physicalPageAddresses[pageIndex] = i;
+                if (pageIndex == pages - 1)
+                    break;
+                pageIndex++;
+            }
+        // make sure all pages were allocated
+        if (pageIndex < physicalPageAddresses.length - 1)
+            return -1;
+        // now mark those pages in use
+        for (int i = 0; i < physicalPageAddresses.length; i++)
+            freePages[physicalPageAddresses[i]] = true;
+        return scheduler.GetCurrentlyRunning().allocateMemory(physicalPageAddresses);
     }
 
     private boolean FreeMemory(int pointer, int size) {
+        if (size % 1024 != 0 || pointer % 1024 != 0)
+            return false;
+        int[] physicalPages = scheduler.GetCurrentlyRunning().freeMemory(pointer / Hardware.PAGE_SIZE, size / Hardware.PAGE_SIZE);
+        for (int physicalPage : physicalPages)
+            freePages[physicalPage] = false;
         return true;
     }
 
-    private void FreeAllMemory(PCB currentlyRunning) {
+    private void FreeAllMemory() {
+        for (int physicalPage : scheduler.GetCurrentlyRunning().getPageTable())
+            if (physicalPage != -1)
+                freePages[physicalPage] = false;
     }
 }

@@ -39,18 +39,13 @@ public class Scheduler {
     public Scheduler(UserlandProcess init, VirtualFileSystem vfs) {
 //        this.currentlyRunning = new PCB(new IdleProcess(), OS.PriorityType.background);
         currentlyRunning = new PCB(init, OS.PriorityType.interactive);
+        CreateProcess(new IdleProcess(), OS.PriorityType.background);
         this.vfs = vfs;
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
                 if (currentlyRunning != null)
                     currentlyRunning.requestStop();
-//                for (PCB pcb : realtimeQueue)
-//                    pcb.requestStop();
-//                for (PCB pcb : interactiveQueue)
-//                    pcb.requestStop();
-//                for (PCB pcb : backgroundQueue)
-//                    pcb.requestStop();
             }
         };
         timer.schedule(task, 0, 250);
@@ -59,30 +54,21 @@ public class Scheduler {
 
     /**
      * Creates a new PCB container for a userland process and adds it to the
-     * scheduler. If no process is currently running, the newly added process
-     * will be set to run next.
+     * scheduler.
      * @param up the process to add
      * @param p  the process' priority
-     * @return
+     * @return Process ID of the newly created process
      */
     public int CreateProcess(UserlandProcess up, OS.PriorityType p) {
         PCB pcb = new PCB(up, p);
         switch (p) {
-            case OS.PriorityType.interactive:
-                interactiveQueue.add(pcb);
-                break;
-            case OS.PriorityType.background:
-                backgroundQueue.add(pcb);
-                break;
-            case OS.PriorityType.realtime:
-                realtimeQueue.add(pcb);
-                break;
+            case OS.PriorityType.interactive -> interactiveQueue.add(pcb);
+            case OS.PriorityType.background  -> backgroundQueue.add(pcb);
+            case OS.PriorityType.realtime    -> realtimeQueue.add(pcb);
         }
         pcbByPID.put(pcb.pid, pcb);
         pcbByName.put(pcb.getName(), pcb);
-//        if (currentlyRunning == null)
-//            SwitchProcess();
-        return 0;
+        return pcb.pid;
     }
 
     /**
@@ -225,7 +211,7 @@ public class Scheduler {
     /**
      * Destroys whatever process is currently running.
      */
-    public void DestroyRunningProcess() {
+    private void DestroyRunningProcess() {
         pcbByName.remove(currentlyRunning.getClass().getSimpleName());
         pcbByPID.remove(currentlyRunning.pid);
         for (int id : currentlyRunning.descriptors)
