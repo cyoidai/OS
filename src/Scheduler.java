@@ -28,19 +28,15 @@ public class Scheduler {
     private final Timer  timer = new Timer();
     private final Clock  clock = Clock.systemDefaultZone();
     private final Random rng   = new Random();
-    private final VirtualFileSystem vfs;
 
     /**
      * @param init The process scheduler is initialized with. Is usually the
      *             process to launch all other processes and should never exit.
-     * @param vfs Reference to the systems VFS in order to properly close any
-     *            open devices upon process destruction.
      */
-    public Scheduler(UserlandProcess init, VirtualFileSystem vfs) {
+    public Scheduler(UserlandProcess init) {
 //        this.currentlyRunning = new PCB(new IdleProcess(), OS.PriorityType.background);
-        currentlyRunning = new PCB(init, OS.PriorityType.interactive);
+        CreateProcess(init, OS.PriorityType.interactive);
         CreateProcess(new IdleProcess(), OS.PriorityType.background);
-        this.vfs = vfs;
         TimerTask task = new TimerTask() {
             @Override
             public void run() {
@@ -49,6 +45,7 @@ public class Scheduler {
             }
         };
         timer.schedule(task, 0, 250);
+        SwitchProcess();
         currentlyRunning.start();
     }
 
@@ -85,24 +82,27 @@ public class Scheduler {
      * the process queues.
      * @param deschedule When true, the currently running process will be
      *                   dropped from the scheduler and will never run again.
-     *                   When false, functions the same as
-     *                   {@code Scheduler.SwitchProcess()}.
      */
     public void SwitchProcess(boolean deschedule) {
         PCB nextProcess = GetNextProcess();
-        if (nextProcess == null)
+        if (nextProcess == null) {
             // no processes to run, just continue running whatever is currently
             // running
             return;
+        }
         if (currentlyRunning != null) {
-            if (currentlyRunning.isDone())
-                // process execution ended unexpectedly
-                DestroyRunningProcess();
-            else if (deschedule)
+            // originally used to handle processes that crashed, now all
+            // processes that crash call OS.Exit() on their own rather than
+            // having the scheduler handle the cleanup. When deschedule is true,
+            // the process is simply dropped from the scheduler.
+//            if (currentlyRunning.isDone())
+//                DestroyRunningProcess();
+            if (deschedule)
                 // program called OS.Exit()
                 DestroyRunningProcess();
-        } else
-            RequeueRunningProcess();
+            else
+                RequeueRunningProcess();
+        }
         currentlyRunning = nextProcess;
     }
 
@@ -214,9 +214,6 @@ public class Scheduler {
     private void DestroyRunningProcess() {
         pcbByName.remove(currentlyRunning.getClass().getSimpleName());
         pcbByPID.remove(currentlyRunning.pid);
-        for (int id : currentlyRunning.descriptors)
-            if (id != -1)
-                vfs.Close(id);
     }
 
     /**
@@ -231,10 +228,6 @@ public class Scheduler {
         targetPCB.deliverMessage(msg);
     }
 
-    public PCB GetCurrentlyRunning() {
-        return currentlyRunning;
-    }
-
     /**
      * Returns the process ID (PID) of a process stored within this scheduler by
      * its name.
@@ -245,6 +238,32 @@ public class Scheduler {
         if (!pcbByName.containsKey(name))
             return -1;
         return pcbByName.get(name).pid;
+    }
+
+    /**
+     * Returns a random process from a randomly selected queue contained within
+     * this scheduler.
+     * @return A random process.
+     */
+    public PCB GetRandomProcess() {
+        int realtimeSize = realtimeQueue.size();
+        int interactiveSize = interactiveQueue.size();
+        int backgroundSize = backgroundQueue.size();
+        int sleepingSize = sleepingQueue.size();
+        // +1 to cover the chance we may pick the currently running process
+        int randint = rng.nextInt(realtimeSize + interactiveSize + backgroundSize + sleepingSize + 1);
+        if (randint < realtimeSize)
+            return realtimeQueue.get(randint);
+        randint -= realtimeSize;
+        if (randint < interactiveSize)
+            return interactiveQueue.get(randint);
+        randint -= interactiveSize;
+        if (randint < backgroundSize)
+            return backgroundQueue.get(randint);
+        randint -= backgroundSize;
+        if (randint < sleepingSize)
+            return (PCB) sleepingQueue.toArray()[randint];
+        return currentlyRunning;
     }
 
     @Override

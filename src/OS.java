@@ -27,8 +27,9 @@ public class OS {
     public static void Startup(UserlandProcess init) {
         ki = new Kernel(init);
         // operating system calls should never happen from main thread as then
-        // the kernel tries to stop a thread that isn't functioning as a
-        // process.
+        // the kernel tries to stop a thread "doesn't exist", meaning it is not
+        // functioning as a process in our emulator. Instead, the Kernel makes
+        // the call.
 //        CreateProcess(new IdleProcess(), PriorityType.background);
 //        CreateProcess(init, PriorityType.interactive);
     }

@@ -2,9 +2,9 @@ import java.util.concurrent.Semaphore;
 
 public abstract class Process implements Runnable {
 
-    Thread thread;
-    Semaphore semaphore;
-    boolean quantumExpired = false;
+    private final Thread thread;
+    private final Semaphore semaphore;
+    private boolean quantumExpired = false;
 
     public Process() {
         thread = new Thread(this, this.getClass().getSimpleName());
@@ -15,7 +15,7 @@ public abstract class Process implements Runnable {
     /**
      * Requests the process to stop by setting its quantum to "expired".
      */
-    public void requestStop() {
+    public final void requestStop() {
         quantumExpired = true;
     }
 
@@ -26,9 +26,8 @@ public abstract class Process implements Runnable {
 
     /**
      * Has the processes' execution been halted by the OS?
-     * @return
      */
-    public boolean isStopped() {
+    public final boolean isStopped() {
         return semaphore.availablePermits() == 0;
     }
 
@@ -36,25 +35,26 @@ public abstract class Process implements Runnable {
      * The process is done if the thread has finished its execution.
      * @return Is the thread alive?
      */
-    public boolean isDone() {
+    public final boolean isDone() {
         return !thread.isAlive();
     }
 
     public void start() {
         semaphore.release();
-//        System.out.println(String.format("Started process %s", this));
     }
 
-    public void stop() {
-//        System.out.println(String.format("Stopping process %s", this));
+    public final void stop() {
         try {
             semaphore.acquire();
-//            System.out.println(String.format("Stopped process %s", this));
         } catch (InterruptedException e) {}
     }
 
+    /**
+     * This is called by the thread upon instantiation and thus should never be
+     * called.
+     */
     @Override
-    public void run() { // This is called by the Thread - NEVER CALL THIS!!!
+    public final void run() { // This is called by the Thread - NEVER CALL THIS!!!
         try {
             semaphore.acquire();
         } catch (InterruptedException e) {}
@@ -63,8 +63,17 @@ public abstract class Process implements Runnable {
         } catch (Exception e) {
             System.out.println(String.format("Process '%s' crashed unexpectedly", this));
             e.printStackTrace();
-            OS.Exit();
+        } finally {
+            onCrash();
         }
+    }
+
+    /**
+     * This is only here because it will be overridden by the kernel. This is
+     * because the kernel should not call {@code OS.Exit()} when it crashes,
+     * but all other processes should.
+     */
+    public void onCrash() {
         OS.Exit();
     }
 

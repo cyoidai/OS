@@ -1,7 +1,9 @@
-import java.util.Arrays;
 import java.util.LinkedList;
 
-/** Process control block */
+/**
+ * Process control block. Contains information about this process used by the
+ * operating system. Most of which is not for individual process to access.
+ * */
 public class PCB {
 
     public final int pid;
@@ -9,12 +11,15 @@ public class PCB {
     private final Process process;
     private final String name;
     private OS.PriorityType priority;
+    /** When the OS should wake up this process if it was put to sleep */
     private long wakeTime = 0;
     private int timeoutCounter = 0;
     public final int[] descriptors = {-1,-1,-1,-1};
     private final LinkedList<KernelMessage> messageQueue = new LinkedList<>();
-    /** Indices are virtual page addresses and values are physical page addresses */
-    private final int[] pageTable = new int[100];
+    /** Contains mapping information for this process' virtual pages. Indices
+     * are the virtual page addresses for this process and values contain either
+     * a physical (memory) page address or disk page address. */
+    private final Page[] pageTable = new Page[100];
 
     PCB(UserlandProcess up, OS.PriorityType priority) {
         process = up;
@@ -22,7 +27,7 @@ public class PCB {
         this.priority = priority;
         pid = nextPid;
         nextPid++;
-        Arrays.fill(pageTable, -1);
+//        Arrays.fill(pageTable, -1);
     }
 
     public String getName() {
@@ -99,14 +104,14 @@ public class PCB {
     }
 
     /**
-     * Given a virtual page number, returns the physical address for that page.
-     * Returns -1 on failure.
+     * Given a virtual page number, returns its mapping information.
+     * Returns {@code null} on failure.
      * @param virtualPage Virtual page address to find.
-     * @return The physical page address associated with {@code virtualPage}.
+     * @return Mapping information associated with {@code virtualPage}.
      */
-    public int getMapping(int virtualPage) {
+    public Page getMapping(int virtualPage) {
         if (virtualPage < 0 || virtualPage >= pageTable.length)
-            return -1;
+            return null;
         return pageTable[virtualPage];
     }
 
@@ -120,7 +125,7 @@ public class PCB {
         for (int i = 0; i <= pageTable.length - size; i++) {
             boolean found = true;
             for (int j = 0; j < size; j++)
-                if (pageTable[i + j] != -1) {
+                if (pageTable[i + j] != null) {
                     found = false;
                     break;
                 }
@@ -134,38 +139,51 @@ public class PCB {
      * Finds and creates a new page table mapping, returning the virtual address
      * that starts the allocation. If a mapping cannot be made (i.e. a
      * contiguous virtual mapping cannot be made), -1 is returned.
-     * @param physicalPageAddresses Array of physical page addresses to assign
-     *                              each virtual page allocation.
+     * @param pages Array containing virtual address mappings. These mappings
+     *              are provided by the operating system.
      * @return The virtual address of the start of the allocation.
      */
-    public int allocateMemory(int[] physicalPageAddresses) {
-        int start = findEmptyVirtualPageRegion(physicalPageAddresses.length);
+    public int allocateMemory(Page[] pages) {
+        int start = findEmptyVirtualPageRegion(pages.length);
         if (start == -1)
             return -1;
-        int i = start;
-        for (int physicalAddress : physicalPageAddresses) {
-            pageTable[i] = physicalAddress;
-            i++;
-        }
+        for (int i = 0; i < pages.length; i++)
+            pageTable[start + i] = pages[i];
         return start * Hardware.PAGE_SIZE;
     }
 
     /**
      * Deletes mappings from the page table.
-     * @param virtualPage Virtual page address.
+     * @param virtualPage Virtual page address to start at.
      * @param size Number of pages to delete.
-     * @return Array of the physical page addresses that were deleted.
+     * @return Array containing the mappings that were deleted.
      */
-    public int[] freeMemory(int virtualPage, int size) {
-        int[] physicalPages = new int[size];
+    public Page[] freeMemory(int virtualPage, int size) {
+        Page[] freedPages = new Page[size];
         for (int i = 0; i < size; i++) {
-            physicalPages[i] = pageTable[virtualPage + i];
-            pageTable[virtualPage + i] = -1;
+            freedPages[i] = pageTable[virtualPage + i];
+            pageTable[virtualPage + i] = null;
         }
-        return physicalPages;
+        return freedPages;
     }
 
-    public int[] getPageTable() {
+    /**
+     * Deletes all mappings from the page table.
+     * @return Array containing the mappings that were deleted.
+     */
+    public Page[] freeAllMemory() {
+        Page[] freedPages = new Page[pageTable.length];
+        int next = 0;
+        for (int i = 0; i < pageTable.length; i++) {
+            if (pageTable[i] == null)
+                continue;
+            freedPages[next++] = pageTable[i];
+            pageTable[i] = null;
+        }
+        return freedPages;
+    }
+
+    public Page[] getPageTable() {
         return pageTable;
     }
 

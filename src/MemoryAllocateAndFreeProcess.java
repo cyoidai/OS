@@ -5,7 +5,7 @@ public class MemoryAllocateAndFreeProcess extends UserlandProcess {
     public void main() {
         Random random = new Random();
 
-        // create memory allocations
+        // create memory allocations of varying size
         int[] ps = new int[3];
         ps[0] = OS.AllocateMemory(1024);
         ps[1] = OS.AllocateMemory(2048);

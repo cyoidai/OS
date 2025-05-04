@@ -1,9 +1,9 @@
 public class KernelMessage {
 
     private int senderPID = -1;
-    private int targetPID;
-    private int type;
-    private byte[] data;
+    private final int targetPID;
+    private final int type;
+    private final byte[] data;
 
     public KernelMessage(int targetPID, int type, byte[] data) {
         this.targetPID = targetPID;
@@ -16,7 +16,7 @@ public class KernelMessage {
      * @param km
      */
     public KernelMessage(KernelMessage km) {
-        this(km.targetPID, km.type, km.data);
+        this(km.targetPID, km.type, km.data.clone());
     }
 
     public int getSenderPID() {

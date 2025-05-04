@@ -13,9 +13,12 @@ public class Init extends UserlandProcess {
 //        OS.CreateProcess(new PingProcess());
 //        OS.CreateProcess(new PongProcess());
 
-        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
-        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
-        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
+//        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
+//        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
+//        OS.CreateProcess(new MemoryAllocateAndFreeProcess());
+
+        for (int i = 0; i < 20; i++)
+            OS.CreateProcess(new Piggy());
 
 //        OS.CreateProcess(new MemoryIllegalAccessTestProcess());
 //        OS.CreateProcess(new MemoryOOMTestProcess());

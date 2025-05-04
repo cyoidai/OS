@@ -2,14 +2,16 @@ import java.util.Random;
 
 public class Hardware {
 
+    /** Total memory size in bytes */
     public static final int MEM_SIZE = 1024 * 1024;
     /** Size of each page in bytes */
     public static final int PAGE_SIZE = 1024;
     /** Number of cached entries (rows) the TLB can store */
     private static final int TLB_SIZE = 2;
     private static final byte[] memory = new byte[MEM_SIZE];
-    /** Translation lookaside buffer, where the first contains virtual page
-     * addresses and the second contains physical page addresses. */
+    /** Translation lookaside buffer. Here, the first entry in each row is the
+     * virtual page addresses and the second entry is the physical page
+     * addresses. */
     private static final int[][] tlb = new int[TLB_SIZE][2];
 
     public static byte Read(int address) {
@@ -18,6 +20,22 @@ public class Hardware {
 
     public static void Write(int address, byte value) {
         memory[translateAddress(address)] = value;
+    }
+
+    /**
+     * Same as read but bypasses virtual to physical address translation. Used
+     * by the operating system only.
+     */
+    public static byte directRead(int address) {
+        return memory[address];
+    }
+
+    /**
+     * Same as write but bypasses virtual to physical address translation. Used
+     * by the operating system only.
+     */
+    public static void directWrite(int address, byte value) {
+        memory[address] = value;
     }
 
     /**

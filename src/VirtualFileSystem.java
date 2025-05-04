@@ -1,8 +1,16 @@
 
 public class VirtualFileSystem implements Device {
 
-    private Device[] devices = new Device[16];
-    private int[] ids = {-1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1};
+    /** Number of possible id to device associations that can be made. */
+    private static final int SIZE = 16;
+
+    private final Device[] devices = new Device[SIZE];
+    private final int[] ids = new int[SIZE];
+
+    public VirtualFileSystem() {
+        for (int i = 0; i < SIZE; i++)
+            ids[i] = -1;
+    }
 
     @Override
     public int Open(String s) {

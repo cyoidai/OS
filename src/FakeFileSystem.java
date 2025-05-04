@@ -4,7 +4,7 @@ import java.io.RandomAccessFile;
 
 public class FakeFileSystem implements Device {
 
-    private static final RandomAccessFile[] files = new RandomAccessFile[10];
+    private final RandomAccessFile[] files = new RandomAccessFile[10];
 
     @Override
     public int Open(String s) {
